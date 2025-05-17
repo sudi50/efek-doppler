@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simulasi Efek Doppler Interaktif</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 20px;
+      background: linear-gradient(to bottom, #e0f7fa, #ffffff);
+    }
+    canvas {
+      border: 1px solid #ccc;
+      background-color: #ffffff;
+      margin-top: 20px;
+    }
+    .controls {
+      margin-top: 20px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+    }
+    label, input, select {
+      margin: 5px;
+    }
+    input[type="number"] {
+      width: 100px;
+    }
+    #observedFrequencyDisplay {
+      font-size: 24px;
+      font-weight: bold;
+      color: #d11a1a;
+      margin-top: 15px;
+    }
+    #formulaDisplay {
+      margin-top: 10px;
+      font-size: 18px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>Simulasi Efek Doppler</h1>
+  <p>Gerakkan sumber suara dan/atau pengamat untuk melihat perubahan frekuensi teramati.</p>
+
+  <div class="controls">
+    <label for="sourceType">Sumber Suara:</label>
+    <select id="sourceType">
+      <option value="ambulance" data-frequency="850">Ambulan (850 Hz)</option>
+      <option value="train" data-frequency="500">Kereta Api (500 Hz)</option>
+      <option value="car" data-frequency="600">Mobil (600 Hz)</option>
+    </select>
+
+    <label for="sourceVelocity">v<sub>s</sub> (Sumber) [m/s]:</label>
+    <input type="number" id="sourceVelocity" value="30" step="5">
+
+    <label for="observerVelocity">v<sub>o</sub> (Pengamat) [m/s]:</label>
+    <input type="number" id="observerVelocity" value="0" step="5">
+
+    <label for="direction">Arah Gerak:</label>
+    <select id="direction">
+      <option value="to">Menuju Pengamat</option>
+      <option value="away">Menjauhi Pengamat</option>
+    </select>
+
+    <label><input type="checkbox" id="showFormula"> Tampilkan Persamaan</label>
+
+    <button onclick="startSimulation()">Mulai Simulasi</button>
+  </div>
+
+  <div id="observedFrequencyDisplay">Frekuensi Teramati: - Hz</div>
+  <div id="formulaDisplay">f' = f × (v ± vo) / (v ∓ vs)</div>
+
+  <canvas id="dopplerCanvas" width="800" height="300"></canvas>
+
+  <script>
+    const canvas = document.getElementById('dopplerCanvas');
+    const ctx = canvas.getContext('2d');
+    let sourceX = 100;
+    const observerX = 700;
+    const soundSpeed = 340; // m/s
+    let animation;
+    let audioContext, oscillator;
+
+    const sourceImages = {
+      ambulance: '🚑',
+      train: '🚆',
+      car: '🚗'
+    };
+
+    const observerImage = '🧍';
+
+    const formulaEl = document.getElementById('formulaDisplay');
+    const showFormulaCheckbox = document.getElementById('showFormula');
+    showFormulaCheckbox.addEventListener('change', () => {
+      formulaEl.style.display = showFormulaCheckbox.checked ? 'block' : 'none';
+    });
+
+    function drawScene(sourceX, sourceType) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.font = '40px Arial';
+
+      // Draw observer
+      ctx.fillText(observerImage, observerX - 20, 160);
+      ctx.font = '16px Arial';
+      ctx.fillText('Pengamat', observerX - 30, 185);
+
+      // Draw source
+      ctx.font = '40px Arial';
+      ctx.fillText(sourceImages[sourceType], sourceX - 20, 160);
+      ctx.font = '16px Arial';
+      ctx.fillText('Sumber Suara', sourceX - 40, 185);
+
+      // Draw waves
+      for (let i = 0; i < 5; i++) {
+        ctx.beginPath();
+        ctx.strokeStyle = 'gray';
+        ctx.arc(sourceX, 150, 40 + i * 30, 0, 2 * Math.PI);
+        ctx.stroke();
+      }
+    }
+
+    function playSound(frequency) {
+      if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (oscillator) {
+        oscillator.stop();
+      }
+      oscillator = audioContext.createOscillator();
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+      oscillator.connect(audioContext.destination);
+      oscillator.start();
+    }
+
+    function stopSound() {
+      if (oscillator) {
+        oscillator.stop();
+        oscillator.disconnect();
+        oscillator = null;
+      }
+    }
+
+    function startSimulation() {
+      cancelAnimationFrame(animation);
+      stopSound();
+
+      const sourceVelocity = parseFloat(document.getElementById('sourceVelocity').value);
+      const observerVelocity = parseFloat(document.getElementById('observerVelocity').value);
+      const direction = document.getElementById('direction').value;
+      const sourceTypeEl = document.getElementById('sourceType');
+      const sourceType = sourceTypeEl.value;
+      const baseFrequency = parseFloat(sourceTypeEl.selectedOptions[0].dataset.frequency);
+
+      sourceX = direction === 'to' ? 100 : observerX;
+
+      function animate() {
+        drawScene(sourceX, sourceType);
+
+        let relativeVelocity, observedFrequency;
+
+        if (direction === 'to') {
+          relativeVelocity = (soundSpeed + observerVelocity) / (soundSpeed - sourceVelocity);
+          sourceX += sourceVelocity * 0.1;
+        } else {
+          relativeVelocity = (soundSpeed - observerVelocity) / (soundSpeed + sourceVelocity);
+          sourceX -= sourceVelocity * 0.1;
+        }
+
+        observedFrequency = (baseFrequency * relativeVelocity).toFixed(1);
+        document.getElementById('observedFrequencyDisplay').textContent = `Frekuensi Teramati: ${observedFrequency} Hz`;
+        playSound(observedFrequency);
+
+        if ((direction === 'to' && sourceX < observerX - 50) ||
+            (direction === 'away' && sourceX > 100)) {
+          animation = requestAnimationFrame(animate);
+        } else {
+          stopSound();
+        }
+      }
+
+      animate();
+    }
+
+    drawScene(sourceX, 'ambulance');
+  </script>
+</body>
+</html>
